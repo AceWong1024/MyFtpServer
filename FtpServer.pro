@@ -10,3 +10,5 @@ SOURCES += \
 HEADERS += \
     src/Server.h \
     src/Session.h
+
+LIBS += -lpthread

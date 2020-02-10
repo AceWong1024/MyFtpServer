@@ -6,4 +6,5 @@ int main()
 {
     Server serv;
     serv.start();
+    serv.threads_join();
 }

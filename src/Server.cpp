@@ -18,8 +18,16 @@ bool Server::send_msg(int socket, char *msg){
     return true;
 }
 
-bool Server::handle_msg(Session *sess, char *msg){
+void Server::handle_msg(int socket,std::string msg){
+    std::cout << "handle_msg()" << std::endl;
+    std::cout << msg << std::endl;
+    sleep(10);
+}
 
+void Server::threads_join(){
+    for(auto iter = threads.begin();iter!=threads.end();iter++){
+        iter->join();
+    }
 }
 
 bool Server::start(){
@@ -103,8 +111,8 @@ bool Server::start(){
                 send_msg(con,"220 Service ready\r\n");
                 std::cout << "log: accept client ip = " << inet_ntoa(cliaddr.sin_addr) << std::endl;
             }else if(events[i].events & EPOLLIN){
-                char recvbuf[1024] = {0};
-                ret = recv(events[i].data.fd,recvbuf,sizeof(recvbuf),0);
+                std::string recvbuf(1024,'\0');
+                ret = recv(events[i].data.fd,const_cast<char*>(recvbuf.data()),sizeof(recvbuf),0);
                 if(ret == -1){
                     std::cout << "error: recv error!" << std::endl;
                     return false;
@@ -113,10 +121,11 @@ bool Server::start(){
                     epoll_ctl(epollfd,EPOLL_CTL_DEL,events[i].data.fd,&event);
                 }
 
-
-                Session* sess = &session_map[events[i].data.fd];
-                handle_msg(sess,recvbuf);
+                //Session* sess = &session_map[events[i].data.fd];
+                threads.push_back(std::thread(&Server::handle_msg,static_cast<int>(events[i].data.fd),recvbuf));
+//                handle_msg(sess,recvbuf);
             }
         }
     }
+    return true;
 }
