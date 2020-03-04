@@ -1,28 +1,4 @@
 #include "Server.h"
-bool Server::send_msg(int socket, char *msg){
-    size_t l = strlen(msg);
-    if(l <= 0){
-        std::cout << "send_msg: length too short!" << std::endl;
-        return false;
-    }
-    size_t ret,n=0;
-    while(n<l){
-        ret = write(socket,msg+n,l);
-        if(ret<0){
-            std::cout << "send_msg: write error!" << std::endl;
-            return false;
-        }else{
-            n+=ret;
-        }
-    }
-    return true;
-}
-
-void Server::handle_msg(int socket,std::string msg){
-    std::cout << "handle_msg()" << std::endl;
-    std::cout << msg << std::endl;
-    sleep(10);
-}
 
 void Server::threads_join(){
     for(auto iter = threads.begin();iter!=threads.end();iter++){
@@ -62,6 +38,7 @@ bool Server::start(){
         std::cout << "error: 套接字监听失败！" << std::endl;
         return false;
     }
+    std::cout << "log: Listening!" << std::endl;
 
     int epollfd = epoll_create1(EPOLL_CLOEXEC);
     if(epollfd < -1){
@@ -111,8 +88,10 @@ bool Server::start(){
                 send_msg(con,"220 Service ready\r\n");
                 std::cout << "log: accept client ip = " << inet_ntoa(cliaddr.sin_addr) << std::endl;
             }else if(events[i].events & EPOLLIN){
-                std::string recvbuf(1024,'\0');
-                ret = recv(events[i].data.fd,const_cast<char*>(recvbuf.data()),sizeof(recvbuf),0);
+                char recvbuf[1024];
+                memset(recvbuf,'\0',sizeof(recvbuf));
+
+                ret = recv(events[i].data.fd,recvbuf,sizeof(recvbuf),0);
                 if(ret == -1){
                     std::cout << "error: recv error!" << std::endl;
                     return false;
@@ -122,8 +101,13 @@ bool Server::start(){
                 }
 
                 //Session* sess = &session_map[events[i].data.fd];
-                threads.push_back(std::thread(&Server::handle_msg,static_cast<int>(events[i].data.fd),recvbuf));
+                int eventfd = events[i].data.fd;
+                threads.push_back(std::thread([this,eventfd,&recvbuf](){
+                    Session sess = session_map[eventfd];
+                    sess.handle_msg(recvbuf);
+                }));
 //                handle_msg(sess,recvbuf);
+                        //&Server::handle_msg,static_cast<int>(events[i].data.fd),const_cast<char*>(recvbuf.data()))
             }
         }
     }

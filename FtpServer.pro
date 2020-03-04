@@ -5,10 +5,12 @@ CONFIG -= qt
 
 SOURCES += \
         main.cpp \
-        src/Server.cpp
+        src/Server.cpp \
+        src/Session.cpp
 
 HEADERS += \
     src/Server.h \
-    src/Session.h
+    src/Session.h \
+    src/SocketUntil.h
 
-LIBS += -lpthread
+LIBS += -lpthread -lcrypt

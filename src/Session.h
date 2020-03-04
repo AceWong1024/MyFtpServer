@@ -3,7 +3,12 @@
 #include <sys/types.h>
 #include <sys/socket.h>
 #include <arpa/inet.h>
-
+#include <string.h>
+#include <iostream>
+#include "SocketUntil.h"
+#include <pwd.h>
+#include <shadow.h>
+#include <unistd.h>
 class Session{
 public:
     int clisocket;
@@ -17,6 +22,35 @@ public:
     bool is_logined;
     bool is_anonymous;
     bool is_pasv;
+    //ftp protoco
+    void handle_user(char msg[]);
+    void handle_pass(char msg[]);
+    void handle_syst();
+    void handle_cwd(char msg[]);
+    void handle_cdup(char msg[]);
+    void handle_quit();
+    void handle_port(char msg[]);
+    void handle_pasv();
+    void handle_type(char msg[]);
+    void handle_retr(char msg[]);
+    void handle_stor(char msg[]);
+    void handle_appe(char msg[]);
+    void handle_list(char msg[]);
+    void handle_nlst(char msg[]);
+    void handle_rest(char msg[]);
+    void handle_abor();
+    void handle_pwd();
+    void handle_mkd(char msg[]);
+    void handle_rmd(char msg[]);
+    void handle_dele(char msg[]);
+    void handle_rnfr(char msg[]);
+    void handle_rnto(char msg[]);
+    void handle_site(char msg[]);
+    void handle_stat(char msg[]);
+    void handle_noop(char msg[]);
+    void handle_help();
+    void handle_size(char msg[]);
+    void handle_msg(char msg[]);
 };
 
 #endif // SESSION_H
