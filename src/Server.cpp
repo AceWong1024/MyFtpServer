@@ -46,12 +46,11 @@ bool Server::start(){
         return false;
     }
 
-    struct epoll_event event;
+
     event.data.fd = fd;
     event.events = EPOLLIN | EPOLLET;
     epoll_ctl(epollfd,EPOLL_CTL_ADD,fd,&event);
 
-    std::vector<struct epoll_event> events(16);
     int evenum = 0;
 
     socklen_t clilen;
@@ -79,6 +78,7 @@ bool Server::start(){
                 session.is_pasv = false;
                 session.is_logined = false;
                 session.is_anonymous = false;
+                session.is_closed = false;
                 strcpy(session.directory,"/");
                 session_map.insert(std::make_pair(con,session));
 
@@ -102,9 +102,14 @@ bool Server::start(){
 
                 //Session* sess = &session_map[events[i].data.fd];
                 int eventfd = events[i].data.fd;
-                threads.push_back(std::thread([this,eventfd,&recvbuf](){
+                threads.push_back(std::thread([this,eventfd,&recvbuf,epollfd](){
                     Session sess = session_map[eventfd];
                     sess.handle_msg(recvbuf);
+                    session_map[eventfd] = sess;
+                    if(sess.is_closed){
+                        session_map.erase(eventfd);
+                        epoll_ctl(epollfd,EPOLL_CTL_DEL,sess.clisocket,&event);
+                    }
                 }));
 //                handle_msg(sess,recvbuf);
                         //&Server::handle_msg,static_cast<int>(events[i].data.fd),const_cast<char*>(recvbuf.data()))

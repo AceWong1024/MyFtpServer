@@ -9,6 +9,7 @@ SOURCES += \
         src/Session.cpp
 
 HEADERS += \
+    src/Config.h \
     src/Server.h \
     src/Session.h \
     src/SocketUntil.h

@@ -13,8 +13,11 @@ public:
     int fd;
     std::unordered_map<int,Session> session_map;
     std::vector<std::thread> threads;
+    std::vector<struct epoll_event> events = std::vector<struct epoll_event>(16);
+    struct epoll_event event;
+
     Server(){
-        
+
     }
     ~Server(){
         

@@ -24,4 +24,6 @@ static bool send_msg(int socket,std::string msg){
     }
     return true;
 }
+
+
 #endif // SOCKETUNTIL_H

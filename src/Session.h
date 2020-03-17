@@ -9,6 +9,10 @@
 #include <pwd.h>
 #include <shadow.h>
 #include <unistd.h>
+#include <sys/time.h>
+#include <sys/stat.h>
+#include "Config.h"
+
 class Session{
 public:
     int clisocket;
@@ -22,6 +26,7 @@ public:
     bool is_logined;
     bool is_anonymous;
     bool is_pasv;
+    bool is_closed;
     //ftp protoco
     void handle_user(char msg[]);
     void handle_pass(char msg[]);
@@ -51,6 +56,11 @@ public:
     void handle_help();
     void handle_size(char msg[]);
     void handle_msg(char msg[]);
-};
 
+private:
+    int checkAuthority();
+    const char* statbuf_get_date(struct stat *sbuf);
+    const char* statbuf_get_perms(struct stat *sbuf);
+    void getDataSock(Session* sess);
+};
 #endif // SESSION_H
