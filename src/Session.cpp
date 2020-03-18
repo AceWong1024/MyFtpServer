@@ -291,38 +291,24 @@ void Session::handle_cwd(char msg[]){
         return;
     }
 
-    //distinguish if it is global
-    bool isGlobal = false;
-    if(msg[0] == '/'){
-        isGlobal = true;
-    }
-
-    char temp[1024] = {0};
-    if(isGlobal){
-        strcpy(temp,globaldir);
-        strcpy(temp,msg);
-    }else{
-        strcpy(temp,globaldir);
-        strcpy(temp,directory);
-        strcpy(temp,msg);
-    }
-
-    if(isExist(temp)){
-        if(isGlobal){
-            strcpy(directory,msg);
-        }else{
-            if(directory[strlen(directory)-2] != '/')
-                strcat(directory,"/");
-            strcat(directory,msg);
-        }
-        send_msg(clisocket,"212 Change directory success!\r\n");
-    }else{
+    if(chdir(msg) < 0){
         send_msg(clisocket,"550 No such directory!\r\n");
+    }else{
+        send_msg(clisocket,"212 Change directory success!\r\n");
     }
 }
 
 void Session::handle_cdup(char msg[]){
-    send_msg(clisocket,"500 Inavalid Comand!\r\n");
+    if(checkAuthority() == 0){
+        send_msg(clisocket,"530 Please login first.\r\n");
+        return;
+    }
+
+    if(chdir("..") < 0){
+        send_msg(clisocket,"550 Change directory error!\r\n");
+    }else{
+        send_msg(clisocket,"212 Change directory success!\r\n");
+    }
 }
 
 void Session::handle_quit(){
@@ -355,10 +341,95 @@ void Session::handle_port(char msg[]){
 void Session::handle_pasv(){
 
 }
-void Session::handle_type(char msg[]){}
-void Session::handle_retr(char msg[]){}
-void Session::handle_stor(char msg[]){}
-void Session::handle_appe(char msg[]){}
+
+void Session::handle_type(char msg[]){
+    if (strcmp(msg, "I") == 0)
+    {
+        send_msg(clisocket, "200 Switching to Binary mode.\r\n");
+    }else{
+        send_msg(clisocket, "504 Unrecognised TYPE command.\r\n");
+    }
+}
+
+void Session::handle_retr(char msg[]){
+    if(checkAuthority() == 0){
+        send_msg(clisocket,"530 Please login first.\r\n");
+    }else{
+        char path[1024] = {0};
+
+        if(msg[0] == '/'){
+            strcpy(path,msg);
+        }else{
+            getcwd(path,1024);
+            strcat(path,"/");
+            strcat(path,msg);
+        }
+
+        FILE* file = fopen(path,"rb");
+        if(!file){
+            std::cout << "error: open file error." << std::endl;
+            send_msg(clisocket,"550 Fail to open the file!\r\n");
+        }else{
+            getDataSock(this);
+
+            char buf[1024];
+            while (!feof(file)) {
+                int n = fread(buf, 1, 1024, file);
+                int j = 0;
+                while (j < n) {
+                    j += send(datasocket, buf + j, n - j, 0);
+                    std::cout << "Sending!" << std::endl;
+                }
+            }
+
+            fclose(file);
+            close(datasocket);
+            send_msg(clisocket,"226 Transfer complete.\r\n");
+        }
+    }
+}
+
+void Session::handle_stor(char msg[]){
+    if(checkAuthority() == 0){
+        send_msg(clisocket,"530 Please login first.\r\n");
+    }else{
+        char path[1024];
+        getcwd(path,1024);
+        strcat(path,"/");
+        if(msg != nullptr)
+            strcat(path,msg);
+
+        FILE* file = fopen(path,"wb");
+        if(file == nullptr){
+            send_msg(clisocket,"550 Fail to open the file!\r\n");
+        }else{
+            getDataSock(this);
+
+            char buf[1024];
+            int i = 0;
+            while(1){
+                i = read(datasocket,buf,1024);
+                if(i < 0){
+                    fclose(file);
+                    send_msg(clisocket,"426 Error!Connectin closed!\r\n");
+                    return;
+                }
+                if(i == 0)
+                    break;
+
+                fwrite(buf,1,i,file);
+            }
+
+            fclose(file);
+            close(datasocket);
+            send_msg(clisocket,"226 Transfer complete.\r\n");
+        }
+    }
+}
+
+void Session::handle_appe(char msg[]){
+
+}
 
 void Session::handle_list(char msg[]){
     if(checkAuthority() == 0){
@@ -367,11 +438,17 @@ void Session::handle_list(char msg[]){
     }
 
     char path[1024] = {0};
-    strcpy(path,globaldir);
-    strcat(path,this->directory);
-    strcat(path,"/");
-    if(msg != nullptr){
-        strcat(path,msg);
+    if(msg==nullptr){
+        getcwd(path,1024);
+        strcat(path,"/");
+    }else{
+        if(msg[0] == '/'){
+            strcpy(path,msg);
+        }else{
+            getcwd(path,1024);
+            strcat(path,"/");
+            strcat(path,msg);
+        }
     }
 
     std::cout << path << std::endl;
@@ -391,8 +468,73 @@ void Session::handle_list(char msg[]){
             }
 
             char name[100] = {0};
-            strcpy(name,path);
-            strcat(name,dt->d_name);
+            sprintf(name,"%s/%s",path,dt->d_name);
+            if (lstat(name, &sbuf) == -1)
+            {
+                std::cout << "continue1 errno = " << errno << std::endl;
+                continue;
+            }
+
+            char buf[1024] = {0};
+
+            int off = 0;
+
+            if (S_ISLNK(sbuf.st_mode))
+            {
+                char tmp[1024] = {0};
+                readlink(dt->d_name, tmp, sizeof(tmp));
+                off += sprintf(buf + off, "%s -> %s\r\n", dt->d_name, tmp);
+            }else{
+                off += sprintf(buf + off, "%s\r\n", dt->d_name);
+            }
+            std::cout << buf << std::endl;
+            send_msg(datasocket,buf);
+        }
+        send_msg(clisocket,"226 List Finished!\r\n");
+        closedir(dir);
+        close(datasocket);
+        datasocket = 0;
+    }
+}
+
+void Session::handle_nlst(char msg[]){
+    if(checkAuthority() == 0){
+        send_msg(clisocket,"530 Please login first.\r\n");
+        return;
+    }
+
+    char path[1024] = {0};
+    if(msg==nullptr){
+        getcwd(path,1024);
+        strcat(path,"/");
+    }else{
+        if(msg[0] == '/'){
+            strcpy(path,msg);
+        }else{
+            getcwd(path,1024);
+            strcat(path,"/");
+            strcat(path,msg);
+        }
+    }
+
+    std::cout << path << std::endl;
+    DIR* dir = opendir(path);
+    std::cout << dir << std::endl;
+    if(dir == nullptr){
+        send_msg(clisocket,"553 Directory read error.\r\n");
+        std::cout << "error: read path error!" << std::endl;
+    }else{
+        getDataSock(this);
+        struct dirent* dt;
+        struct stat sbuf;
+        while((dt = readdir(dir))){
+            if(dt->d_name[0] == '.'){
+                std::cout << "log: ignore '.'!" << std::endl;
+                continue;
+            }
+
+            char name[100] = {0};
+            sprintf(name,"%s/%s",path,dt->d_name);
             if (lstat(name, &sbuf) == -1)
             {
                 std::cout << "continue1 errno = " << errno << std::endl;
@@ -421,37 +563,105 @@ void Session::handle_list(char msg[]){
             std::cout << buf << std::endl;
             send_msg(datasocket,buf);
         }
-        send_msg(clisocket,"226 List Finished!\r\n");
+        send_msg(clisocket,"226 NLST Finished!\r\n");
         closedir(dir);
         close(datasocket);
+        datasocket = 0;
     }
 }
 
-void Session::handle_nlst(char msg[]){}
 void Session::handle_rest(char msg[]){}
-void Session::handle_abor(){}
+
+void Session::handle_abor(){
+    if(datasocket != 0){
+        close(datasocket);
+    }
+
+    send_msg(clisocket,"226 ABOR command successful.\r\n");
+}
 
 void Session::handle_pwd(){
     if(checkAuthority() == 0){
         send_msg(clisocket,"530 Please login first.\r\n");
     }else{
-        char text[1024] = "212 ";
-        strcat(text,directory);
-        strcat(text,"\r\n");
+        char text[1026] = {0};
+        char path[1024] = {0};
+        getcwd(path,1024);
+        sprintf(text,"212 %s\r\n",path);
         send_msg(clisocket,text);
     }
 }
 
-void Session::handle_mkd(char msg[]){}
-void Session::handle_rmd(char msg[]){}
-void Session::handle_dele(char msg[]){}
-void Session::handle_rnfr(char msg[]){}
-void Session::handle_rnto(char msg[]){}
-void Session::handle_site(char msg[]){}
-void Session::handle_stat(char msg[]){}
-void Session::handle_noop(char msg[]){}
-void Session::handle_help(){}
-void Session::handle_size(char msg[]){}
+void Session::handle_mkd(char msg[]){
+    if(mkdir(msg,0777) < 0){
+        send_msg(clisocket,"550 Cannot create directory.\r\n");
+        return;
+    }
+
+    char text[1024] = {0};
+    if (msg[0] == '/')
+    {
+        sprintf(text, "250 %s created.\r\n", msg);
+    }
+    else
+    {
+        char dir[1024+1] = {0};
+        getcwd(dir, 4096);
+        if (dir[strlen(dir)-1] == '/')
+        {
+            sprintf(text, "250 %s%s created.\r\n", dir, msg);
+        }
+        else
+        {
+            sprintf(text, "250 %s/%s created.\r\n", dir, msg);
+        }
+    }
+    send_msg(clisocket,text);
+}
+
+void Session::handle_rmd(char msg[]){
+    if(rmdir(msg) < 0){
+        send_msg(clisocket,"550 Cannot remove directory.\r\n");
+    }else{
+        send_msg(clisocket,"250 Directory removed.\r\n");
+    }
+}
+
+void Session::handle_dele(char msg[]){
+    if(unlink(msg) < 0){
+        send_msg(clisocket,"450 Can't delete file.\r\n");
+    }else{
+        send_msg(clisocket,"250 Command okay.\r\n");
+    }
+}
+
+void Session::handle_rnfr(char msg[]){
+
+}
+
+void Session::handle_rnto(char msg[]){
+
+}
+
+void Session::handle_site(char msg[]){
+
+}
+
+void Session::handle_stat(char msg[]){
+
+}
+
+void Session::handle_noop(char msg[]){
+    send_msg(clisocket,"200 Command OK.\r\n");
+}
+
+void Session::handle_help(){
+
+}
+
+void Session::handle_size(char msg[]){
+
+}
 
 int Session::checkAuthority(){
     if(!is_logined){
